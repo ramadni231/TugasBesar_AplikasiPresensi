@@ -12,31 +12,31 @@ class SubjectSeeder extends Seeder
      */
     public function run(): void
     {
-        DB::table('subjects')->insert([
+        DB::table('matakuliah')->insert([
             [
-                'code' => 'IF201',
-                'name' => 'Pemrograman Mobile',
+                'kode_matkul' => 'IF201',
+                'nama_matkul' => 'Pemrograman Mobile',
                 'sks' => 3,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
-                'code' => 'IF202',
-                'name' => 'Pemrograman Web',
+                'kode_matkul' => 'IF202',
+                'nama_matkul' => 'Pemrograman Web',
                 'sks' => 3,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
-                'code' => 'IF203',
-                'name' => 'Internet of Things',
+                'kode_matkul' => 'IF203',
+                'nama_matkul' => 'Internet of Things',
                 'sks' => 3,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
-                'code' => 'IF204',
-                'name' => 'Data Mining',
+                'kode_matkul' => 'IF204',
+                'nama_matkul' => 'Data Mining',
                 'sks' => 3,
                 'created_at' => now(),
                 'updated_at' => now(),

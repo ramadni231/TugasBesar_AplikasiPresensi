@@ -12,20 +12,19 @@ class ScheduleSeeder extends Seeder
      */
     public function run(): void
     {
-        // Get IDs of needed relations
-        $mobileSubject = DB::table('subjects')->where('name', 'Pemrograman Mobile')->first();
-        $labRoom = DB::table('rooms')->where('name', 'Lab Terpadu 1')->first();
-        $dosenTuriman = DB::table('users')->where('name', 'Turiman, M.Kom.')->first();
+        $matkulMobile = DB::table('matakuliah')->where('nama_matkul', 'Pemrograman Mobile')->first();
+        $labRuangan = DB::table('ruangan')->where('nama_ruangan', 'Lab Terpadu 1')->first();
+        $dosenTuriman = DB::table('pengguna')->where('nama', 'Turiman, M.Kom.')->first();
 
-        if ($mobileSubject && $labRoom && $dosenTuriman) {
-            DB::table('schedules')->insert([
+        if ($matkulMobile && $labRuangan && $dosenTuriman) {
+            DB::table('jadwal')->insert([
                 [
-                    'subject_id' => $mobileSubject->id,
-                    'room_id' => $labRoom->id,
-                    'lecturer_id' => $dosenTuriman->id,
-                    'day' => 'Senin',
-                    'start_time' => '08:00:00',
-                    'end_time' => '10:30:00',
+                    'matakuliah_id' => $matkulMobile->id,
+                    'ruangan_id' => $labRuangan->id,
+                    'dosen_id' => $dosenTuriman->id,
+                    'hari' => 'Senin',
+                    'jam_mulai' => '08:00:00',
+                    'jam_selesai' => '10:30:00',
                     'created_at' => now(),
                     'updated_at' => now(),
                 ],

@@ -8,19 +8,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('rooms', function (Blueprint $table) {
+        Schema::create('pengaturan', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->integer('capacity');
-            $table->double('latitude');
-            $table->double('longitude');
-            $table->integer('radius_meters');
+            $table->string('kunci')->unique();
+            $table->string('nilai');
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('rooms');
+        Schema::dropIfExists('pengaturan');
     }
 };
