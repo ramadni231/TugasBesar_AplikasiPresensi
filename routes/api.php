@@ -36,11 +36,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/jadwal', [AdminController::class, 'storeJadwal']);
         Route::put('/jadwal/{id}', [AdminController::class, 'updateJadwal']);
         Route::delete('/jadwal/{id}', [AdminController::class, 'destroyJadwal']);
+        Route::get('/jadwal/{id}/rekap', [AdminController::class, 'getJadwalRekap']);
         
         Route::get('/izin', [AdminController::class, 'getIzin']);
         Route::put('/izin/{id}/status', [AdminController::class, 'updateIzinStatus']);
 
         Route::post('/pengaturan/peminatan', [AdminController::class, 'toggleMasaPeminatan']);
+        Route::get('/pengaturan/peminatan', [AdminController::class, 'getMasaPeminatanStatus']);
+        Route::post('/pengaturan/mulai-semester', [AdminController::class, 'setTanggalMulaiSemester']);
+        Route::get('/pengaturan/mulai-semester', [AdminController::class, 'getTanggalMulaiSemester']);
         Route::get('/peminatan', [AdminController::class, 'getKelolaPeminatan']);
         Route::put('/peminatan/{id}/status', [AdminController::class, 'updateStatusPeminatan']);
     });
@@ -50,10 +54,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/jadwal', [DosenController::class, 'getJadwal']);
         Route::get('/jadwal/hari-ini', [DosenController::class, 'getKelasAktifHariIni']);
         Route::put('/jadwal/{id}/reschedule', [DosenController::class, 'rescheduleJadwal']);
+        Route::get('/jadwal/{id}/detail', [DosenController::class, 'getJadwalDetail']);
 
         Route::post('/sesi/aktifkan', [DosenController::class, 'aktifkanSesi']);
+        Route::post('/sesi/{id}/hentikan', [DosenController::class, 'hentikanSesi']);
         Route::put('/sesi/{id}/hentikan', [DosenController::class, 'hentikanSesi']);
         Route::get('/sesi/{jadwal_id}/presensi', [DosenController::class, 'getPresensiRealtime']);
+        
+        Route::get('/riwayat/jadwal/{jadwal_id}', [DosenController::class, 'getRiwayatSesi']);
+        Route::get('/riwayat/jadwal/{jadwal_id}/pertemuan/{pertemuan_ke}', [DosenController::class, 'getPresensiSesi']);
+        Route::post('/presensi/manual', [DosenController::class, 'updatePresensiManual']);
         
         Route::get('/izin', [DosenController::class, 'getIzin']);
         Route::put('/izin/{id}/status', [DosenController::class, 'updateStatusIzin']);
@@ -61,7 +71,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Modul Mahasiswa
     Route::middleware('role:mahasiswa')->prefix('mahasiswa')->group(function () {
+        Route::get('/jadwal', [MahasiswaController::class, 'getJadwal']);
         Route::get('/jadwal/hari-ini', [MahasiswaController::class, 'getJadwalHariIni']);
+        Route::get('/jadwal/{id}/detail', [MahasiswaController::class, 'getJadwalDetail']);
         Route::get('/presensi/riwayat', [MahasiswaController::class, 'getRiwayatPresensi']);
         Route::post('/presensi/pindai', [MahasiswaController::class, 'pindaiPresensi']);
         Route::post('/izin/ajukan', [MahasiswaController::class, 'ajukanIzin']);
@@ -69,5 +81,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/matakuliah', [MahasiswaController::class, 'getMatakuliahPeminatan']);
         Route::post('/peminatan', [MahasiswaController::class, 'ajukanPeminatan']);
+        Route::get('/peminatan', [MahasiswaController::class, 'getRiwayatPeminatan']);
+        Route::delete('/peminatan/{id}', [MahasiswaController::class, 'batalPeminatan']);
     });
 });

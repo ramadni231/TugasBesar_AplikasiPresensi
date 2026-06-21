@@ -13,6 +13,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Mencegah error "Route [login] not defined" pada API request.
+        // Cukup kembalikan null; AuthenticationException akan ditangani
+        // oleh handler kustom di bawah yang mengembalikan JSON 401.
+        $middleware->redirectGuestsTo(fn () => null);
+
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
         ]);

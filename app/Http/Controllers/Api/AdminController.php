@@ -10,6 +10,7 @@ use App\Models\Jadwal;
 use App\Models\Izin;
 use App\Models\Pengaturan;
 use App\Models\Peminatan;
+use App\Models\SesiAktif;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
@@ -158,6 +159,7 @@ class AdminController extends Controller
             'kode_matkul' => 'required|string|unique:matakuliah',
             'nama_matkul' => 'required|string',
             'sks' => 'required|integer',
+            'semester' => 'required|integer',
         ]);
 
         $matkul = Matakuliah::create($data);
@@ -177,6 +179,7 @@ class AdminController extends Controller
             'kode_matkul' => 'sometimes|string|unique:matakuliah,kode_matkul,'.$id,
             'nama_matkul' => 'sometimes|string',
             'sks' => 'sometimes|integer',
+            'semester' => 'sometimes|integer',
         ]);
 
         $matkul->update($data);
@@ -202,7 +205,7 @@ class AdminController extends Controller
     // --- MANAJEMEN JADWAL ---
     public function getJadwal()
     {
-        $jadwal = Jadwal::with(['matakuliah', 'ruangan', 'dosen'])->get();
+        $jadwal = Jadwal::with(['matakuliah', 'ruangan', 'dosen', 'sesiAktif'])->get();
         return response()->json([
             'status' => 'success',
             'data' => $jadwal
@@ -218,6 +221,7 @@ class AdminController extends Controller
             'hari' => 'required|string',
             'jam_mulai' => 'required',
             'jam_selesai' => 'required',
+            'metode' => 'sometimes|in:luring,daring',
         ]);
 
         $jadwal = Jadwal::create($data);
@@ -233,22 +237,64 @@ class AdminController extends Controller
     {
         $jadwal = Jadwal::findOrFail($id);
 
-        $data = $request->validate([
+        $request->validate([
+            'tipe' => 'sometimes|in:satu_pertemuan,selamanya',
+            // fields for satu_pertemuan:
+            'pertemuan_ke' => 'required_if:tipe,satu_pertemuan|integer|min:1|max:16',
+            'tanggal_reschedule' => 'required_if:tipe,satu_pertemuan|date',
+            'jam_mulai_reschedule' => 'required_if:tipe,satu_pertemuan',
+            'jam_selesai_reschedule' => 'required_if:tipe,satu_pertemuan',
+            'ruangan_id_reschedule' => 'nullable|exists:ruangan,id',
+            // fields for selamanya:
             'matakuliah_id' => 'sometimes|exists:matakuliah,id',
             'ruangan_id' => 'sometimes|exists:ruangan,id',
             'dosen_id' => 'sometimes|exists:pengguna,id',
             'hari' => 'sometimes|string',
             'jam_mulai' => 'sometimes',
             'jam_selesai' => 'sometimes',
+            'metode' => 'sometimes|in:luring,daring',
         ]);
 
-        $jadwal->update($data);
+        $tipe = $request->input('tipe', 'selamanya');
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Jadwal berhasil diperbarui',
-            'data' => $jadwal
-        ]);
+        if ($tipe === 'satu_pertemuan') {
+            $sesi = SesiAktif::updateOrCreate(
+                [
+                    'jadwal_id' => $jadwal->id,
+                    'pertemuan_ke' => $request->pertemuan_ke,
+                ],
+                [
+                    'tanggal_reschedule' => $request->tanggal_reschedule,
+                    'jam_mulai_reschedule' => $request->jam_mulai_reschedule,
+                    'jam_selesai_reschedule' => $request->jam_selesai_reschedule,
+                    'ruangan_id_reschedule' => $request->ruangan_id_reschedule,
+                ]
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Reschedule pertemuan berhasil disimpan',
+                'data' => $sesi
+            ]);
+        } else {
+            $data = $request->only([
+                'matakuliah_id',
+                'ruangan_id',
+                'dosen_id',
+                'hari',
+                'jam_mulai',
+                'jam_selesai',
+                'metode',
+            ]);
+
+            $jadwal->update($data);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Jadwal berhasil diperbarui',
+                'data' => $jadwal
+            ]);
+        }
     }
 
     public function destroyJadwal($id)
@@ -282,6 +328,41 @@ class AdminController extends Controller
             'disetujui_oleh' => $request->user()->id,
         ]);
 
+        if ($request->status_persetujuan === 'disetujui') {
+            // Find all classes (Jadwal) where the student is enrolled
+            $matakuliahDisetujuiIds = \App\Models\Peminatan::where('mahasiswa_id', $izin->pengguna_id)
+                ->where('status', 'disetujui')
+                ->pluck('matakuliah_id');
+
+            $jadwals = \App\Models\Jadwal::whereIn('matakuliah_id', $matakuliahDisetujuiIds)->get();
+
+            foreach ($jadwals as $jadwal) {
+                for ($p = 1; $p <= 16; $p++) {
+                    $sesiJadwal = \App\Models\SesiAktif::where('jadwal_id', $jadwal->id)
+                        ->where('pertemuan_ke', $p)
+                        ->first();
+
+                    $tanggalPertemuan = ($sesiJadwal && $sesiJadwal->tanggal_reschedule) 
+                        ? $sesiJadwal->tanggal_reschedule 
+                        : $this->hitungTanggalPertemuan($jadwal->hari, $p);
+
+                    if ($tanggalPertemuan === $izin->tanggal) {
+                        \App\Models\Presensi::updateOrCreate(
+                            [
+                                'jadwal_id' => $jadwal->id,
+                                'mahasiswa_id' => $izin->pengguna_id,
+                                'pertemuan_ke' => $p,
+                            ],
+                            [
+                                'status' => $izin->tipe_izin,
+                                'jam_masuk' => now()->toTimeString(),
+                            ]
+                        );
+                    }
+                }
+            }
+        }
+
         return response()->json([
             'status' => 'success',
             'message' => 'Status izin berhasil diperbarui',
@@ -289,6 +370,19 @@ class AdminController extends Controller
     }
 
     // --- PENGATURAN & PEMINATAN ---
+    public function getMasaPeminatanStatus()
+    {
+        $pengaturan = Pengaturan::where('kunci', 'is_masa_peminatan')->first();
+        $isAktif = $pengaturan ? $pengaturan->nilai === 'true' : false;
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'is_aktif' => $isAktif,
+            ]
+        ]);
+    }
+
     public function toggleMasaPeminatan(Request $request)
     {
         $request->validate([
@@ -303,6 +397,37 @@ class AdminController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Masa peminatan ' . ($request->is_aktif ? 'diaktifkan' : 'dinonaktifkan'),
+            'data' => $pengaturan
+        ]);
+    }
+
+    public function getTanggalMulaiSemester()
+    {
+        $pengaturan = Pengaturan::where('kunci', 'tanggal_mulai_semester')->first();
+        $tanggal = $pengaturan ? $pengaturan->nilai : '2026-02-23';
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'nilai' => $tanggal,
+            ]
+        ]);
+    }
+
+    public function setTanggalMulaiSemester(Request $request)
+    {
+        $request->validate([
+            'tanggal' => 'required|date',
+        ]);
+
+        $pengaturan = Pengaturan::updateOrCreate(
+            ['kunci' => 'tanggal_mulai_semester'],
+            ['nilai' => $request->tanggal]
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Tanggal mulai semester berhasil diatur',
             'data' => $pengaturan
         ]);
     }
@@ -329,5 +454,146 @@ class AdminController extends Controller
             'status' => 'success',
             'message' => 'Status peminatan berhasil diperbarui',
         ]);
+    }
+
+    public function getJadwalRekap(Request $request, $id)
+    {
+        $jadwal = Jadwal::with(['matakuliah', 'ruangan', 'dosen'])->findOrFail($id);
+
+        $today = now()->toDateString();
+
+        // Ambil semua mahasiswa yang disetujui peminatannya untuk matakuliah ini
+        $peminatans = Peminatan::with('mahasiswa')
+            ->where('matakuliah_id', $jadwal->matakuliah_id)
+            ->where('status', 'disetujui')
+            ->get();
+
+        // Buat detail untuk 16 pertemuan
+        $listPertemuanInfo = [];
+        for ($p = 1; $p <= 16; $p++) {
+            $sesiJadwal = \App\Models\SesiAktif::where('jadwal_id', $jadwal->id)
+                ->where('pertemuan_ke', $p)
+                ->first();
+
+            $tanggal = ($sesiJadwal && $sesiJadwal->tanggal_reschedule) 
+                ? $sesiJadwal->tanggal_reschedule 
+                : $this->hitungTanggalPertemuan($jadwal->hari, $p);
+
+            $listPertemuanInfo[$p] = [
+                'pertemuan_ke' => $p,
+                'label' => $this->dapatkanLabelPertemuan($p),
+                'tanggal' => $tanggal,
+            ];
+        }
+
+        $rekapMahasiswa = [];
+
+        foreach ($peminatans as $peminatan) {
+            $mahasiswa = $peminatan->mahasiswa;
+            if (!$mahasiswa) {
+                continue;
+            }
+
+            $kehadiran = [];
+            $totalHadir = 0;
+            $totalSakit = 0;
+            $totalIzin = 0;
+            $totalAlpa = 0;
+
+            for ($p = 1; $p <= 16; $p++) {
+                $tanggal = $listPertemuanInfo[$p]['tanggal'];
+                
+                $presensi = \App\Models\Presensi::where('jadwal_id', $jadwal->id)
+                    ->where('mahasiswa_id', $mahasiswa->id)
+                    ->where('pertemuan_ke', $p)
+                    ->first();
+
+                $status = 'belum_dimulai';
+                if ($presensi) {
+                    $status = $presensi->status;
+                } else {
+                    if ($tanggal < $today) {
+                        $status = 'alpa';
+                    }
+                }
+
+                if ($status === 'hadir') {
+                    $totalHadir++;
+                } elseif ($status === 'sakit') {
+                    $totalSakit++;
+                } elseif ($status === 'izin') {
+                    $totalIzin++;
+                } elseif ($status === 'alpa') {
+                    $totalAlpa++;
+                }
+
+                $kehadiran[$p] = [
+                    'pertemuan_ke' => $p,
+                    'status' => $status,
+                ];
+            }
+
+            $persentase = 16 > 0 ? round(($totalHadir / 16) * 100, 2) : 0;
+
+            $rekapMahasiswa[] = [
+                'mahasiswa' => $mahasiswa,
+                'kehadiran' => array_values($kehadiran),
+                'ringkasan' => [
+                    'hadir' => $totalHadir,
+                    'sakit' => $totalSakit,
+                    'izin' => $totalIzin,
+                    'alpa' => $totalAlpa,
+                    'persentase' => $persentase,
+                ],
+            ];
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'jadwal' => $jadwal,
+                'pertemuan' => array_values($listPertemuanInfo),
+                'rekap' => $rekapMahasiswa,
+            ]
+        ]);
+    }
+
+    private function hitungTanggalPertemuan($hari, $pertemuan_ke)
+    {
+        $pengaturan = Pengaturan::where('kunci', 'tanggal_mulai_semester')->first();
+        $baseDateString = $pengaturan ? $pengaturan->nilai : '2026-02-23';
+        $baseDate = \Carbon\Carbon::parse($baseDateString);
+
+        $startDayOfWeek = $baseDate->dayOfWeek;
+        $targetDayOfWeek = [
+            'Senin' => 1,
+            'Selasa' => 2,
+            'Rabu' => 3,
+            'Kamis' => 4,
+            'Jumat' => 5,
+            'Sabtu' => 6,
+            'Minggu' => 0,
+        ][$hari] ?? 1;
+
+        $dayDiff = $targetDayOfWeek - $startDayOfWeek;
+        if ($dayDiff < 0) {
+            $dayDiff += 7;
+        }
+        $firstMeetingDate = $baseDate->copy()->addDays($dayDiff);
+        return $firstMeetingDate->addWeeks($pertemuan_ke - 1)->toDateString();
+    }
+
+    private function dapatkanLabelPertemuan($pertemuan_ke)
+    {
+        if ($pertemuan_ke >= 1 && $pertemuan_ke <= 7) {
+            return "Pertemuan " . $pertemuan_ke;
+        } elseif ($pertemuan_ke == 8) {
+            return "UTS";
+        } elseif ($pertemuan_ke >= 9 && $pertemuan_ke <= 15) {
+            return "Pertemuan " . ($pertemuan_ke - 1);
+        } elseif ($pertemuan_ke == 16) {
+            return "UAS";
+        }
+        return "Pertemuan " . $pertemuan_ke;
     }
 }
